@@ -1,0 +1,48 @@
+ai:
+  agent:
+    config:
+      tables:
+        # 配置 agent, map 结构可配置多个
+        testAgent2:
+          app-name: testAgent2
+          session-expire-seconds: 3600
+          agentDefinition:
+            agent-id: testAgent2
+            agent-name: testAgent2
+            agent-desc: 一个测试的智能体
+          module:
+            # 不能为空
+            ai-api:
+              base-url: https://openrouter.ai/api
+              # qwen/qwen3.6-plus:free   stepfun/step-3.5-flash:free
+              api-key: ${open-router.api-key}
+              completions-path: /v1/chat/completions
+              embeddings-path: /v1/embeddings
+            # 不能为空
+            chat-model:
+              model: qwen/qwen3.6-plus:free
+              # tool-mcp-list 可选参数
+              tool-mcp-list:
+                - sse:
+                    name: baidu-search
+                    base-uri: http://appbuilder.baidu.com
+                    sse-endpoint: /v2/ai_search/mcp/sse?api_key=${baidu.api-key}
+                    request-timeout: 300000
+                - local:
+                    bean-name: myToolCallbackProvider
+            # 不能为空
+            llm-agents:
+              - name: CarbonCaptureResearcher
+                description: 通用智能体
+                instruction: |
+                  你是一个通用智能体 解答日常问题和编程问题, 擅长使用skills
+                chat-model:
+                  model: qwen/qwen3.6-plus:free
+                  tool-skills-list:
+                    - root-path: agent/skills
+                      type: resource
+            runner:
+              agent-name: CarbonCaptureResearcher
+#              plugin-name-list:
+#                - myTestPlugin
+#                - myLogPlugin
