@@ -4,23 +4,22 @@ ai:
       tables:
         # 配置 agent, map 结构可配置多个
         testAgent2:
-          app-name: testAgent2
+          app-name: draw.io_专业图表生成助手
           session-expire-seconds: 3600
           agentDefinition:
-            agent-id: testAgent2
-            agent-name: testAgent2
+            agent-id: drawioAgents
+            agent-name: drawioAgents
             agent-desc: 一个测试的智能体
           module:
             # 不能为空
             ai-api:
-              base-url: https://openrouter.ai/api
-              # qwen/qwen3.6-plus:free   stepfun/step-3.5-flash:free
-              api-key: ${open-router.api-key}
-              completions-path: /v1/chat/completions
-              embeddings-path: /v1/embeddings
+              base-url: ${xfg.base-url}
+              api-key: ${xfg.api-key}
+              completions-path: v1/chat/completions
+              embeddings-path: v1/embeddings
             # 不能为空
             chat-model:
-              model: qwen/qwen3.6-plus:free
+              model: gpt-5.4-mini
               # tool-mcp-list 可选参数
               tool-mcp-list:
                 - sse:
@@ -32,17 +31,25 @@ ai:
                     bean-name: myToolCallbackProvider
             # 不能为空
             llm-agents:
-              - name: CarbonCaptureResearcher
-                description: 通用智能体
-                instruction: |
-                  你是一个通用智能体 解答日常问题和编程问题, 擅长使用skills
-                chat-model:
-                  model: qwen/qwen3.6-plus:free
-                  tool-skills-list:
-                    - root-path: agent/skills
-                      type: resource
+            - name: drawioAgents
+              description: draw.io 专业图表生成助手 (支持流程图/架构图/ER图/UML等)
+              instruction: |
+                你是一个专业的 draw.io 图表生成助手，精通调用mcp工具和skills,请通过用户的描述，调用mcp工具和skills辅助完成任务。
+                请根据用户的描述生成相应的 draw.io XML 数据。
+                要求:
+                1. 输出内容必须且只能是 draw.io 的 XML 代码。
+                2. 不要使用 Markdown 代码块（如 ```xml ... ```）。
+                3. 不要包含任何解释、前言或结束语。
+                4. 确保 XML 结构完整，可以直接被 draw.io 组件加载。
+                5. 图表布局要美观、清晰，确保连线不要交叉。
+                6. 输出格式为：|
+                <mxfile>
+                  <diagram name="xxx">
+                    <mxGraphModel>...</mxGraphModel>
+                  </diagram>
+                </mxfile>
             runner:
-              agent-name: CarbonCaptureResearcher
-#              plugin-name-list:
-#                - myTestPlugin
-#                - myLogPlugin
+              agent-name: drawioAgents
+              plugin-name-list:
+                - myTestPlugin
+                - myLogPlugin

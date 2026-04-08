@@ -28,7 +28,7 @@ import java.util.Objects;
 @Slf4j
 @RestController
 @RequestMapping("/agent")
-@CrossOrigin(origins = "*", allowedHeaders = "*")
+@CrossOrigin(origins = "http://localhost:3000", allowedHeaders = "*", allowCredentials = "true")
 public class AgentController implements IAgentService {
 
     @Resource
