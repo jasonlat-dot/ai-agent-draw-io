@@ -9,6 +9,8 @@ interface ChatPanelProps {
   onToggle: () => void;
   isStreaming: boolean;
   onLoadXml: (xml: string) => void;
+  sendCanvasInfo: boolean;
+  getGlobalCanvasXml: () => string;
 }
 
 const ChatPanel: React.FC<ChatPanelProps> = ({
@@ -16,6 +18,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
   onToggle,
   isStreaming,
   onLoadXml,
+  sendCanvasInfo,
+  getGlobalCanvasXml,
 }) => {
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -69,6 +73,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
             ? { ...msg, content: '已根据您的需求生成架构图，请在左侧画板查看。您可以继续提出修改建议', xml }
             : msg
         )
+
       );
     } else {
       setMessages((prev) =>
@@ -206,6 +211,14 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
   const handleMessageSent = async (messageText: string) => {
     if (!messageText.trim() || isSending) return;
 
+    let finalMessage = messageText;
+    if (sendCanvasInfo) {
+      const canvasXml = getGlobalCanvasXml();
+      if (canvasXml) {
+        finalMessage = `【当前画布 XML】\n\`\`\`xml\n${canvasXml}\n\`\`\`\n\n【用户消息】\n${messageText}`;
+      }
+    }
+
     const userMessage = createNewMessage(messageText, 'user');
     setMessages((prev) => [...prev, userMessage]);
     setInputValue('');
@@ -224,9 +237,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
 
     try {
       if (isStreaming) {
-        await handleStreamingChat(messageText, agentMessageId);
+        await handleStreamingChat(finalMessage, agentMessageId);
       } else {
-        await handleNormalChat(messageText, agentMessageId);
+        await handleNormalChat(finalMessage, agentMessageId);
       }
     } catch (error) {
       handleChatError(error, agentMessageId);

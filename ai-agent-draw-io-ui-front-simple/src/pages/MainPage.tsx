@@ -3,14 +3,33 @@ import { useNavigate } from 'react-router-dom';
 import { DrawIoEmbed, DrawIoEmbedRef } from 'react-drawio';
 import ChatPanel from '../components/ChatPanel';
 import { CookieStorage } from '../utils/cookie';
+import { expandCompressedDiagramInMxfile } from '../utils/diagramXml';
 import '../App.css';
+
+/** 全局字段：保存当前画布的明文 XML 数据（画布内容变化时自动更新） */
+let globalCanvasXml = '';
+
+/** 与 diagrams.net 菜单「文件 → 导出为 → XML」一致：明文 mxfile，非 xmlsvg 压缩块 */
+function requestPlainXmlExport(drawioRef: React.RefObject<DrawIoEmbedRef | null>) {
+  const api = drawioRef.current as unknown as
+    | { exportDiagram: (opts: Record<string, unknown>) => void }
+    | null;
+  api?.exportDiagram({
+    format: 'xml',
+    compressed: false,
+  });
+}
 
 const MainPage: React.FC = () => {
   const navigate = useNavigate();
   const [xml, setXml] = useState<string>('');
   const [chatCollapsed, setChatCollapsed] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [showCopiedTip, setShowCopiedTip] = useState(false);
+  const [sendCanvasInfo, setSendCanvasInfo] = useState(false);
   const drawioRef = useRef<DrawIoEmbedRef>(null);
+  /** embed 协议里 autosave 事件携带的明文 diagram XML（与编辑器内部一致） */
+  const latestPlainXmlRef = useRef<string>('');
 
   useEffect(() => {
     // 从 Cookie 读取流式模式设置
@@ -22,12 +41,69 @@ const MainPage: React.FC = () => {
     setChatCollapsed((prev) => !prev);
   }, []);
 
-  const handleSave = useCallback((data: unknown) => {
-    const eventData = data as { data?: string };
-    if (eventData?.data) {
-      setXml(eventData.data);
+  const handleAutoSave = useCallback((data: unknown) => {
+    const eventData = data as { xml?: string };
+    if (eventData?.xml) {
+      latestPlainXmlRef.current = eventData.xml;
+      globalCanvasXml = eventData.xml;
+      console.log('[globalCanvasXml]', globalCanvasXml);
     }
   }, []);
+
+  const handleExport = useCallback((data: unknown) => {
+    const eventData = data as { xml?: string; format?: string };
+    let raw = eventData?.xml?.trim();
+    if (raw) {
+      if (raw.includes('<mxfile') && !raw.includes('<mxGraphModel')) {
+        raw = expandCompressedDiagramInMxfile(raw);
+      }
+      if (raw.includes('<mxGraphModel')) {
+        setXml(raw);
+        return;
+      }
+    }
+    const fallback = latestPlainXmlRef.current;
+    if (fallback) {
+      setXml(fallback);
+    }
+  }, []);
+
+  const handleExportXml = useCallback(() => {
+    requestPlainXmlExport(drawioRef);
+  }, []);
+
+  const handleCopyXml = useCallback(async () => {
+    if (!xml) return;
+    try {
+      await navigator.clipboard.writeText(xml);
+      setShowCopiedTip(true);
+      setTimeout(() => setShowCopiedTip(false), 1500);
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = xml;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      setShowCopiedTip(true);
+      setTimeout(() => setShowCopiedTip(false), 1500);
+    }
+  }, [xml]);
+
+  const handleDownloadXml = useCallback(() => {
+    if (!xml) return;
+    const blob = new Blob([xml], { type: 'text/xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `diagram-${Date.now()}.xml`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [xml]);
 
   const handleLogout = useCallback(() => {
     CookieStorage.clearAll();
@@ -42,8 +118,20 @@ const MainPage: React.FC = () => {
   const handleLoadXml = useCallback((xmlContent: string) => {
     if (drawioRef.current && xmlContent) {
       drawioRef.current.load({ xml: xmlContent });
+      globalCanvasXml = xmlContent;
+      console.log(xmlContent)
+      console.log(globalCanvasXml)
     }
   }, []);
+
+  /** 更新全局字段（当通过其他方式更新画布内容时调用） */
+  const updateGlobalCanvasXml = useCallback((xmlContent: string) => {
+    globalCanvasXml = xmlContent;
+    console.log('[globalCanvasXml]', globalCanvasXml);
+  }, []);
+
+  /** 获取全局画布 XML 的函数（供 ChatPanel 使用） */
+  const getGlobalCanvasXml = useCallback(() => globalCanvasXml, []);
 
   return (
     <div style={styles.app}>
@@ -88,6 +176,39 @@ const MainPage: React.FC = () => {
               </div>
             </div>
           </div>
+          <div style={styles.streamingToggle}>
+            <div style={styles.toggleWrapper}>
+              <span style={{
+                ...styles.toggleLabel,
+                color: sendCanvasInfo ? '#a5b4fc' : 'rgba(255,255,255,0.6)',
+              }}>
+                画布信息
+              </span>
+              <label style={styles.switch}>
+                <input
+                  type="checkbox"
+                  checked={sendCanvasInfo}
+                  onChange={(e) => setSendCanvasInfo(e.target.checked)}
+                />
+                <span style={{
+                  ...styles.slider,
+                  backgroundColor: sendCanvasInfo ? '#6366f1' : '#4b5563',
+                }}>
+                  <span style={{
+                    ...styles.sliderHandle,
+                    transform: sendCanvasInfo ? 'translateX(22px)' : 'translateX(2px)',
+                  }} />
+                </span>
+              </label>
+              <div style={styles.modeIndicator}>
+                <span style={{
+                  ...styles.modeDot,
+                  backgroundColor: sendCanvasInfo ? '#10b981' : '#6b7280',
+                  boxShadow: sendCanvasInfo ? '0 0 8px rgba(16, 185, 129, 0.6)' : 'none',
+                }} />
+              </div>
+            </div>
+          </div>
           <button onClick={handleLogout} style={styles.logoutBtn}>
             退出登录
           </button>
@@ -95,13 +216,22 @@ const MainPage: React.FC = () => {
       </header>
       <main style={styles.main}>
         <div style={styles.editorContainer}>
+          <div style={styles.editorToolbar}>
+            <button onClick={handleExportXml} style={styles.exportBtn}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />
+              </svg>
+              导出 XML
+            </button>
+          </div>
           <DrawIoEmbed
             ref={drawioRef}
             urlParameters={{
               ui: 'kennedy',
               spin: true,
             }}
-            onSave={handleSave}
+            onAutoSave={handleAutoSave}
+            onExport={handleExport}
             autosave={true}
           />
         </div>
@@ -116,6 +246,8 @@ const MainPage: React.FC = () => {
             onToggle={handleToggleChat}
             isStreaming={isStreaming}
             onLoadXml={handleLoadXml}
+            sendCanvasInfo={sendCanvasInfo}
+            getGlobalCanvasXml={getGlobalCanvasXml}
           />
         </div>
       </main>
@@ -123,9 +255,34 @@ const MainPage: React.FC = () => {
         <div style={styles.xmlPreview}>
           <div style={styles.xmlHeader}>
             <span style={styles.xmlTitle}>导出的 XML</span>
-            <button onClick={() => setXml('')} style={styles.closeBtn}>
-              ×
-            </button>
+            <div style={styles.xmlActions}>
+              <button onClick={handleCopyXml} style={styles.xmlActionBtn}>
+                {showCopiedTip ? (
+                  <>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+                    </svg>
+                    已复制
+                  </>
+                ) : (
+                  <>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" />
+                    </svg>
+                    复制
+                  </>
+                )}
+              </button>
+              <button onClick={handleDownloadXml} style={styles.xmlActionBtn}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />
+                </svg>
+                下载
+              </button>
+              <button onClick={() => setXml('')} style={styles.closeBtn}>
+                ×
+              </button>
+            </div>
           </div>
           <pre style={styles.xmlContent}>{xml}</pre>
         </div>
@@ -252,6 +409,30 @@ const styles: { [key: string]: React.CSSProperties } = {
     flex: 1,
     minWidth: 0,
     backgroundColor: '#fff',
+    display: 'flex',
+    flexDirection: 'column',
+  },
+  editorToolbar: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    padding: '8px 12px',
+    backgroundColor: '#f3f4f6',
+    borderBottom: '1px solid #e5e7eb',
+    flexShrink: 0,
+  },
+  exportBtn: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '8px 14px',
+    backgroundColor: '#6366f1',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '6px',
+    fontSize: '13px',
+    fontWeight: '500',
+    cursor: 'pointer',
+    transition: 'all 0.2s',
   },
   chatContainer: {
     flexShrink: 0,
@@ -274,9 +455,27 @@ const styles: { [key: string]: React.CSSProperties } = {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: '12px 16px',
+    padding: '10px 16px',
     backgroundColor: '#1e1b4b',
     color: '#fff',
+  },
+  xmlActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+  },
+  xmlActionBtn: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '4px',
+    padding: '4px 10px',
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '4px',
+    fontSize: '12px',
+    cursor: 'pointer',
+    transition: 'background 0.2s',
   },
   xmlTitle: {
     fontSize: '14px',

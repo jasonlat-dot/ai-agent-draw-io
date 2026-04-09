@@ -150,7 +150,9 @@ public class AgentController implements IAgentService {
             List<String> messages = chatService.handleMessage(request.getAgentId(), request.getUserId(), sessionId, request.getMessage());
 
             ChatResponse responseDTO = new ChatResponse();
-            responseDTO.setContent(String.join("\n", messages));
+            String messageContent = String.join("\n", messages);
+            log.info("智能体对话结果：\n {}", messageContent);
+            responseDTO.setContent(messageContent);
 
             return Response.<ChatResponse>builder()
                     .code(ResponseCode.SUCCESS.getCode())

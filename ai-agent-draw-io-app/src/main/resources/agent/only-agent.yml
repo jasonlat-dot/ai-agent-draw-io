@@ -19,7 +19,7 @@ ai:
               embeddings-path: v1/embeddings
             # 不能为空
             chat-model:
-              model: gpt-5.4-mini
+              model: gpt-4o
               # tool-mcp-list 可选参数
               tool-mcp-list:
                 - sse:
